@@ -196,3 +196,11 @@ function getScopeObject(scope: string): Scope {
     };
 }
 ```
+
+# A step back
+
+Let's go back one step. What do we want? We want to deliver *events* that are *isolated*. We have the information about the isolation available in framework code (the isolate module). Now we can switch to the event handling so we know how we have to design our data structure in the isolate module (with what information we want what in return?).
+
+# Event delegation
+
+For the event delegation, we will start at the very end and work out our way from there. What do we know when we get an event? Basicly only the element where the event originated and where the event listener was attached. We want to implement event delegation, like most other frameworks too (e.g. React). This means we only attach an event listener at the topmost element, wait for the events to bubble up to this element and then simulate bubbling ourself. This has the advantage that for our simulated bubbling, we can take isolation scopes into account.
