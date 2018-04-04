@@ -78,3 +78,28 @@ class OurMap<Value> {
 }
 ```
 Can you see what collision avoidance method we have used? If you said linear hashing, you are right! If our spot is already occupied, we go one right. 
+
+The `get` method works exactly the same as the insert method, it just doesnt check for `undefined` but for the key you passed in.
+
+Deletion is also similar, but we additionally have to check for elements on the right. If there is an element it might have got there by our linar hashing so if the original element is missing the `get` will not try to look at the right. We have to shift those elements back to the left.
+
+# Bonus round: Sets
+
+You might have also stumbled across Sets. As it turns out, you can implement a Set with a Map. You can actually see this in the DevTools of Chrome. A Set has the properties keys and values, which would not make sense for a Set where you only need keys for example.
+
+Let's copy that approach by simply using our keys as values.
+```ts
+class OurSet {
+    private map: OurMap<number>;
+
+    constructor(size: number) {
+        this.map = new OurMap<number>(size);
+    }
+
+    public insert(value: number) {
+        this.map.insert(value, value);
+    }
+}
+```
+
+This works because using the same key will always lead to the same memory location. So if there is already the key you overwrite it which doesnt change anything. If there is no entry you can know that this key does not yet exists in the Set.
