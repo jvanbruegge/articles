@@ -53,7 +53,7 @@ You get this:
 
 ![](./dom-driver/no_isolation.gif)
 
-Why? Because if you take a look at the DOM, you see that there are two elements with the `.increment` class, so either one triggers the emission of events:
+Why? Because if you take a look at the DOM, you see that there are _two_ elements with the `.increment` class, so either one triggers the emission of events:
 
 ![](./dom-driver/dom_no_isolation.svg)
 
@@ -75,3 +75,76 @@ function main(sources) {
 ```
 
 ![](./dom-driver/dom_total_isolation.svg)
+
+## Building the bridge between APIs
+
+The goal of us is to build the bridge between the declarative API of the DOM driver including isolation and the native DOM API of the browser.
+
+For this we need to know how the browser processes events. When an event is emitted on an element it first runs through the **capture phase**. This means the event runs top down from the `<html>` to the `<button>` in our case, triggering the event listeners that specified `useCature: true`.
+
+Then, the more well known **bubbling phase**. Now the event runs bottom up through the DOM tree, triggering all event listeners that were not triggered in the capture phase.
+
+So for our isolation we want to stop the events from propagating outside of the current scope. Sadly we can't use `stopPropagation`, because the capture phase always starts at the root of the DOM tree, not the root of our isolation scope.
+
+We want the bubbling phase to look like this:
+
+![](./dom-driver/bubbling_total_isolation.svg)
+
+## Implementing a custom event propagation algorithm
+
+As we already said, we can't use the native event bubbling of the DOM. To make our live a bit easier, we will just attach an native event listener at the root of our cycle app, and use the bubbling to catch all events that happen in the DOM with just one listener (yes, there are events that do not bubble, but I will exclude them for sake of simplicity here).
+
+This root event listener looks like this:
+```js
+root.addEventListener('click', function(event) {
+    const element = event.target;
+    // do something
+});
+```
+
+We know the element where the event happened, but not in which isolation scope this element is, as the DOM does not know anything about isolation. This means we need a mapping from element to isolation scope.
+
+But remember how I said before, the only thing I know about the DOM driver is, that it uses virtual DOM under the hood? How do we get the actual DOM nodes, and not the vnodes?
+
+## Hooking into the VDOM
+
+Snabbdom, the virtual DOM implementation that Cycle.js uses, allows to create modules that can hook into the DOM node create/update/delete livecycle. A basic module looks like this:
+```js
+const myModule = {
+  create: function(emptyVnode, vnode) {
+    // invoked whenever a new virtual node is created
+    // the actual DOM element is under vnode.elm
+  },
+  update: function(oldVnode, vnode) {
+    // invoked whenever a virtual node is updated
+  },
+  delete: function(vnode) {
+    // invoken whenever a DOM node is removed
+  }
+};
+```
+
+So if we attach the isolation scope information to the vnode, we can use the `create` hook to save the scope together with a reference to the DOM node.
+
+## Attaching the scope information
+
+If we take a look at the `isolate()` API again, we can see that it is a **higher order function**, so a function that takes a function as input and (in our case) returns a new function:
+```js
+const isolatedComponentFunction = isolate(Component, scope);
+```
+
+If we imagine the inner workings of isolate and ignore all other drivers except DOM, it would look a bit like this:
+```js
+function isolate(Component, scope) {
+    return function IsolatedComponent(sources) {
+        const isolatedSource = sources.DOM.isolateSource(sources.DOM, scope);
+        const sinks = Component({ ...sources, DOM: isolatedSource });
+
+        return {
+            ...sinks,
+            DOM: sources.DOM.isolateSink(sink.DOM, scope)
+        };
+    }
+}
+```
+So we have two points of attack, `isolateSource` and `isolateSink`.
